@@ -1,11 +1,12 @@
 import dash
 import dash_core_components as dcc
 import dash_html_components as html
+import numpy as np
 import pandas as pd
 from bs4 import BeautifulSoup
 from urllib.request import urlopen
 from datetime import datetime
-import numpy as np
+
 
 external_stylesheets = ['https://codepen.io/chriddyp/pen/bWLwgP.css']
 
@@ -33,6 +34,11 @@ def getData():
         if mohDate>df["Date"].iloc[-1]:
             latest = pd.DataFrame({"Country/Region": "New Zealand", "Date": mohDate, "Value": numCases, }, index=[0])
             df = pd.concat([df, latest])
+
+    numValues = df["Value"].size - 1
+    for i in range (1, numValues):
+        df["New Cases"].at[i] = df["Value"].at[i] - df["Value"].at[i-1]
+
 
     return df
 
