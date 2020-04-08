@@ -7,6 +7,9 @@ from bs4 import BeautifulSoup
 from urllib.request import urlopen
 from datetime import datetime
 
+import locale
+locale.setlocale(locale.LC_ALL, 'en_US.UTF8')
+
 
 external_stylesheets = ['https://codepen.io/chriddyp/pen/bWLwgP.css']
 
@@ -20,22 +23,26 @@ server = app.server
 
 def getData():
     # Get Johns Hopkins Data
-    df = pd.read_csv(johnsURL)
-    df = pd.melt(df.loc[df["Country/Region"]=="New Zealand"],"Country/Region",df.columns[4:],"Date","Value")
-    df.Date = pd.to_datetime(df.Date)
+    try:
+        df = pd.read_csv(johnsURL)
+        df = pd.melt(df.loc[df["Country/Region"]=="New Zealand"],"Country/Region",df.columns[4:],"Date","Value")
+        df.Date = pd.to_datetime(df.Date)
+    except Exception as e:
+        print("Error getting data from Johns Hopkins Github:", e)
 
     # Check Ministry of Health website for latest number
-    mohHTML = urlopen(mohURL).read().decode('utf-8')
-    soup = BeautifulSoup(mohHTML,'html.parser')
-    if soup.find("table", class_="table-style-two").find_all("td")[6].string == 'Number of confirmed and probable cases':
-        numCases = np.int64(soup.find("table", class_="table-style-two").find_all("td")[7].string)
-        dateString = soup.find("table", class_="table-style-two").find("caption").string
-        mohDate = pd.to_datetime(datetime.strptime(dateString, "As at %I.%M %p, %d %B %Y").replace(hour=0, minute=0, second=0, microsecond=0))
-        if mohDate>df["Date"].iloc[-1]:
-            latest = pd.DataFrame({"Country/Region": "New Zealand", "Date": mohDate, "Value": numCases, }, index=[0])
-            df = pd.concat([df, latest])
-
-    numValues = df["Value"].size - 1
+    try:
+        mohHTML = urlopen(mohURL).read().decode('utf-8')
+        soup = BeautifulSoup(mohHTML,'html.parser')
+        if soup.find("table", class_="table-style-two").find_all("tr")[3].find("th").string == 'Number of confirmed and probable cases':
+            numCases = np.int64(locale.atoi(soup.find("table", class_="table-style-two").find_all("tr")[3].find_all("td")[0].string))
+            dateString = soup.find("p", class_="page_updated").find("span", class_="date").string
+            mohDate = pd.to_datetime(datetime.strptime(dateString, "%d %B %Y").replace(hour=0, minute=0, second=0, microsecond=0))
+            if mohDate>df["Date"].iloc[-1]:
+                latest = pd.DataFrame({"Country/Region": "New Zealand", "Date": mohDate, "Value": numCases, }, index=[0])
+                df = pd.concat([df, latest])
+    except Exception as e:
+        print("Error geting data from MOH website:", e)
     for i in range (1, numValues):
         df["New Cases"].at[i] = df["Value"].at[i] - df["Value"].at[i-1]
 
@@ -53,8 +60,8 @@ def createLayout():
 
     return html.Div(children=[
 
-        html.H1(children="As of %s there are %s confirmed cases of COVID-19 in New Zealand" %
-                         (df["Date"].iloc[-1].strftime("%d %B %Y"),df.Value.iloc[-1]),
+        html.H1(children=locale.format_string("As of %s there are %d confirmed cases of COVID-19 in New Zealand",
+                         (df["Date"].iloc[-1].strftime("%d %B %Y"),df.Value.iloc[-1]),grouping=True),
                 style={'textAlign': 'center'}),
 
         dcc.Graph(
